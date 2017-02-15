@@ -6,7 +6,7 @@ Why did we introduce an ESB? One reason: to provide a generic method to update l
 
 # Background
 
-Apache ServiceMix 6.1.2 is used as the service broker.
+Apache ServiceMix 6.1.2 is used as the service broker.  
 
 Apache ServiceMix is an enterprise-class open-source distributed enterprise service bus (ESB) based on the service-oriented architecture (SOA) model. It is a project of the Apache Software Foundation and was built on the semantics and application programming interfaces of the Java Business Integration (JBI) specification JSR 208. The software is distributed under the Apache License.
 
