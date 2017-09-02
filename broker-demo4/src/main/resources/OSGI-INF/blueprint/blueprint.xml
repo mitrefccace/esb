@@ -5,22 +5,15 @@
     <reference availability="mandatory"
         filter="(osgi.jndi.service.name=jdbc/mySqlDataSource)"
         id="myDataSource" interface="javax.sql.DataSource"/>
-    <camelContext id="camelContext-c6505bbc-9a60-4cfd-9b26-6937c9f62fa6" xmlns="http://camel.apache.org/schema/blueprint">
-        <!-- <properties> -->
-        <!-- <property key="http.proxyHost" value="gatekeeper.mitre.org" /> -->
-        <!-- <property key="http.proxyPort" value="80" /> -->
-        <!-- </properties> -->
-        <!-- <camel:sslContextParameters id="sslContextParameters"> -->
-        <!-- <camel:keyManagers keyPassword="changeit"> -->
-        <!-- <camel:keyStore resource="/users/home/server/keystore.jks" -->
-        <!-- password="changeit" /> -->
-        <!-- </camel:keyManagers> -->
-        <!-- </camel:sslContextParameters> -->
+    <camelContext id="camelContext-c6505bbc-9a60-4cfd-9b26-6937c9f62fa6"
+        streamCache="true" xmlns="http://camel.apache.org/schema/blueprint">
+        <!-- Cache to memory -->
+        <streamCaching bufferSize="0" id="cacheConfig"/>
         <dataFormats>
             <bindy classType="org.mitre.fcc.broker.User"
                 id="bindyDataformat" type="Csv"/>
             <json id="jack" library="Jackson"
-                unmarshalTypeName="org.mitre.fcc.broker.User" useList="true"/>
+                prettyPrint="true" unmarshalTypeName="org.mitre.fcc.broker.User" useList="true"/>
         </dataFormats>
         <restConfiguration bindingMode="off" component="jetty"
             host="0.0.0.0" port="8080">
@@ -39,7 +32,7 @@
             </post>
         </rest>
         <route id="zendesk_jetty">
-            <from id="_from4" uri="jetty:http://0.0.0.0:9090/api?matchOnUriPrefix=true"/>
+            <from id="_from4" uri="jetty:http://0.0.0.0:8585/api?matchOnUriPrefix=true"/>
             <log id="_log5" message="from test: route: CamelHttpPath=[${header.CamelHttpPath}], CamelHttpUri=[${header.CamelHttpUri}]"/>
             <convertBodyTo id="_convertBodyTo1" type="java.lang.String"/>
             <log id="_log6" message="body: ${body}"/>
@@ -73,7 +66,7 @@
         <route id="route_data_createupdate">
             <!-- Split (i.e., iterate) the user object list -->
             <from id="_from1" uri="direct:datacreateupdate"/>
-            <log id="_log14" message="transform csv file..."/>
+            <log id="_log14" message="transform csv or json file..."/>
             <to id="_to9" uri="log:org.mitre.fcc.broker?showAll=true&amp;multiline=true&amp;level=DEBUG"/>
             <choice id="_choice1">
                 <when id="_when1">
@@ -88,16 +81,20 @@
                     <to id="_to12" uri="mock:unknownContent"/>
                 </otherwise>
             </choice>
+            <to id="_to18" uri="log:org.mitre.fcc.broker?showAll=true&amp;multiline=true&amp;level=DEBUG"/>
         </route>
         <route id="route_csv_data_createupdate">
             <from id="_from2" uri="direct:csvdatacreateupdate"/>
             <unmarshal id="_unmarshal2" ref="bindyDataformat"/>
             <log id="_log15" message="Got ${body}"/>
-            <split id="_split2">
+            <split id="_split2" strategyRef="splitAggregator">
                 <simple>${body}</simple>
                 <log id="_log16" message="Split ${body}"/>
                 <log id="_log17" message="User Name: ${body.name}"/>
-                <multicast id="_multicast2">
+	            <setProperty id="_setProperty1" propertyName="user_id">
+	                <simple>${body.id}</simple>
+	            </setProperty>
+                <multicast id="_multicast2" strategyRef="multicastAggregator">
                     <to id="_to7" uri="direct:mysql"/>
                     <to id="_to8" uri="direct:zendesk"/>
                 </multicast>
@@ -107,29 +104,48 @@
             <from id="_from8" uri="direct:jsondatacreateupdate"/>
             <unmarshal id="_unmarshal3" ref="jack"/>
             <log id="_log19" message="Got ${body}"/>
-            <split id="_split3">
+            <split id="_split3" strategyRef="splitAggregator">
                 <simple>${body}</simple>
                 <log id="_log20" message="Split ${body}"/>
                 <log id="_log21" message="User Name: ${body.name}"/>
-                <multicast id="_multicast3">
+                <multicast id="_multicast3" strategyRef="multicastAggregator">
                     <to id="_to13" uri="direct:mysql"/>
                     <to id="_to14" uri="direct:zendesk"/>
                 </multicast>
+                <to id="_to17" uri="log:org.mitre.fcc.broker?showAll=true&amp;multiline=true&amp;level=DEBUG"/>
             </split>
         </route>
         <route id="route_mysql_createorupdate">
             <from id="_from6" uri="direct:mysql"/>
             <setBody id="_setBody1">
-                <simple trim="false">INSERT INTO users (user_id,user_name,user_address,user_phone,user_account,user_description) VALUES ("${body.id}","${body.name}","${body.address}","${body.phone}","${body.account}","${body.notes}") 
-					ON DUPLICATE KEY UPDATE user_name="${body.name}",user_address="${body.address}",user_phone="${body.phone}",user_account="${body.account}",user_description="${body.notes}";</simple>
+                <simple trim="false">INSERT INTO users (user_id,user_email,user_name,user_address,user_phone,user_account,user_description) VALUES ("${body.id}","${body.email}","${body.name}","${body.address}","${body.phone}","${body.account}","${body.notes}")
+                                        ON DUPLICATE KEY UPDATE user_email="${body.email}",user_name="${body.name}",user_address="${body.address}",user_phone="${body.phone}",user_account="${body.account}",user_description="${body.notes}";</simple>
             </setBody>
             <log id="_log11" message="body before name jdbc: ${body}"/>
             <to id="_to5" uri="jdbc:myDataSource?useHeadersAsParameters=false"/>
             <log id="_log12" message="body after name jdbc: ${body}"/>
+            <to id="_to15" uri="log:org.mitre.fcc.broker?showAll=true&amp;multiline=true&amp;level=DEBUG"/>
+            <choice id="_choice3">
+                <when id="_when4">
+                    <simple>${header.CamelJdbcUpdateCount} != 1</simple>
+                    <setBody id="_setBody3">
+                        <simple>{result: mysql error - record not created or updated for user ID ${exchangeProperty.user_id}}</simple>
+                    </setBody>
+                    <log id="_log24" message="received an error from mysql: ${body}"/>
+                    <to id="_to21" uri="log:org.mitre.fcc.broker?showAll=true&amp;multiline=true&amp;level=DEBUG"/>
+                </when>
+                <otherwise id="_otherwise3">
+                    <log id="_log26" message="mysql successfully created or updated record for user ID: ${exchangeProperty.user_id}"/>
+                    <setBody id="_setBody4">
+                        <simple>{result: mysql record created or updated for user ID ${exchangeProperty.user_id} }</simple>
+                    </setBody>
+                    <log id="_log25" message="mysql successfully created or updated: ${body}"/>
+                    <to id="_to22" uri="log:org.mitre.fcc.broker?showAll=true&amp;multiline=true&amp;level=DEBUG"/>
+                </otherwise>
+            </choice>
         </route>
-        <route id="route_zendesk">
-            <!-- uri="https4://vmdigioia.zendesk.com/api/v2/users/create_or_update.json?bridgeEndpoint=true&amp;sslContextParametersRef=sslContextParameters&amp;throwExceptionOnFailure=false" 
-				/> -->
+        <route id="route_zendesk" streamCache="true">
+            <!--             <convertBodyTo id="_convertBodyTo2" type="String"/> -->
             <from id="_from7" uri="direct:zendesk"/>
             <log id="_log13" message="body in route_zendesk: ${body}"/>
             <bean id="_bean2" method="transform" ref="zendeskTransform"/>
@@ -137,12 +153,33 @@
             <setHeader headerName="Content-Type" id="_setHeader1">
                 <constant>application/json</constant>
             </setHeader>
-            <convertBodyTo id="_convertBodyTo2" type="String"/>
             <to id="_to6" uri="https4://vmdigioia.zendesk.com/api/v2/users/create_or_update.json?bridgeEndpoint=true&amp;throwExceptionOnFailure=false"/>
-            <log id="_log18" message="body after zendesk request ${body}"/>
+            <log id="_log18" message="body after zendesk request: ${body}"/>
+            <to id="_to16" uri="log:org.mitre.fcc.broker?showAll=true&amp;multiline=true&amp;level=DEBUG"/>
+            <choice id="_choice2">
+                <when id="_when3">
+                    <simple>${header.CamelHttpResponseCode} != 200</simple>
+                    <!-- > forward the zendesk error -->
+                    <convertBodyTo id="_convertBodyTo2" type="String"/>
+                    <setBody>
+                    	<simple>{result: zendesk error - record not created or updated for user ID ${exchangeProperty.user_id}}, ${body}}</simple>
+                    </setBody>
+                    <log id="_log22" message="received an error from zendesk: ${body}"/>
+                    <to id="_to19" uri="log:org.mitre.fcc.broker?showAll=true&amp;multiline=true&amp;level=DEBUG"/>
+                </when>
+                <otherwise id="_otherwise2">
+                    <setBody id="_setBody2">
+                        <simple>{result: zendesk record created or updated for user ID ${exchangeProperty.user_id}}</simple>
+                    </setBody>
+                    <log id="_log23" message="zendesk successfully created or updated: ${body}"/>
+                    <to id="_to20" uri="log:org.mitre.fcc.broker?showAll=true&amp;multiline=true&amp;level=DEBUG"/>
+                </otherwise>
+            </choice>
         </route>
     </camelContext>
     <bean class="org.mitre.fcc.broker.MultipartTransform" id="multipartTransform"/>
     <bean class="org.mitre.fcc.broker.ZendeskTransform" id="zendeskTransform"/>
     <bean class="org.mitre.fcc.broker.User" id="user"/>
+    <bean class="org.mitre.fcc.broker.SplitAggregationStrategy" id="splitAggregator"/>
+    <bean class="org.mitre.fcc.broker.ArrayListAggregationStrategy" id="multicastAggregator"/>
 </blueprint>
