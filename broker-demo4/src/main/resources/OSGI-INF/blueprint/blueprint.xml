@@ -12,15 +12,15 @@
         <dataFormats>
             <bindy classType="org.mitre.fcc.broker.User"
                 id="bindyDataformat" type="Csv"/>
-            <json id="jack" library="Jackson"
-                prettyPrint="true" unmarshalTypeName="org.mitre.fcc.broker.User" useList="true"/>
+            <json id="jack" library="Jackson" prettyPrint="true"
+                unmarshalTypeName="org.mitre.fcc.broker.User" useList="true"/>
         </dataFormats>
         <restConfiguration bindingMode="off" component="jetty"
             host="0.0.0.0" port="8080">
             <dataFormatProperty key="prettyPrint" value="true"/>
         </restConfiguration>
         <rest path="/acedirect">
-            <get consumes="application/json" uri="/mysql/user">
+            <get consumes="application/json" uri="/zendesk/user">
                 <to uri="direct:zendesk_bridge"/>
             </get>
             <post consumes="application/octet-stream"
@@ -91,9 +91,9 @@
                 <simple>${body}</simple>
                 <log id="_log16" message="Split ${body}"/>
                 <log id="_log17" message="User Name: ${body.name}"/>
-	            <setProperty id="_setProperty1" propertyName="user_id">
-	                <simple>${body.id}</simple>
-	            </setProperty>
+                <setProperty id="_setProperty1" propertyName="user_id">
+                    <simple>${body.id}</simple>
+                </setProperty>
                 <multicast id="_multicast2" strategyRef="multicastAggregator">
                     <to id="_to7" uri="direct:mysql"/>
                     <to id="_to8" uri="direct:zendesk"/>
@@ -129,7 +129,7 @@
                 <when id="_when4">
                     <simple>${header.CamelJdbcUpdateCount} != 1</simple>
                     <setBody id="_setBody3">
-                        <simple>{result: mysql error - record not created or updated for user ID ${exchangeProperty.user_id}}</simple>
+                        <simple>{"result": mysql error - record not created or updated for user ID ${exchangeProperty.user_id}"}</simple>
                     </setBody>
                     <log id="_log24" message="received an error from mysql: ${body}"/>
                     <to id="_to21" uri="log:org.mitre.fcc.broker?showAll=true&amp;multiline=true&amp;level=DEBUG"/>
@@ -137,7 +137,7 @@
                 <otherwise id="_otherwise3">
                     <log id="_log26" message="mysql successfully created or updated record for user ID: ${exchangeProperty.user_id}"/>
                     <setBody id="_setBody4">
-                        <simple>{result: mysql record created or updated for user ID ${exchangeProperty.user_id} }</simple>
+                        <simple>{"result": "mysql record created or updated for user ID ${exchangeProperty.user_id}"}</simple>
                     </setBody>
                     <log id="_log25" message="mysql successfully created or updated: ${body}"/>
                     <to id="_to22" uri="log:org.mitre.fcc.broker?showAll=true&amp;multiline=true&amp;level=DEBUG"/>
@@ -150,6 +150,7 @@
             <log id="_log13" message="body in route_zendesk: ${body}"/>
             <bean id="_bean2" method="transform" ref="zendeskTransform"/>
             <log id="_log18" message="body after replace ${body}"/>
+            <to id="_to23" uri="log:org.mitre.fcc.broker?showAll=true&amp;multiline=true&amp;level=DEBUG"/>
             <setHeader headerName="Content-Type" id="_setHeader1">
                 <constant>application/json</constant>
             </setHeader>
@@ -160,16 +161,19 @@
                 <when id="_when3">
                     <simple>${header.CamelHttpResponseCode} != 200</simple>
                     <!-- > forward the zendesk error -->
+                    <setProperty id="_setProperty2" propertyName="zendesk_error">
+                        <jsonpath suppressExceptions="true">error</jsonpath>
+                    </setProperty>
                     <convertBodyTo id="_convertBodyTo2" type="String"/>
-                    <setBody>
-                    	<simple>{result: zendesk error - record not created or updated for user ID ${exchangeProperty.user_id}}, ${body}}</simple>
+                    <setBody id="_setBody5">
+                        <simple>{"result": "zendesk error - record not created or updated for user ID ${exchangeProperty.user_id} - ${exchangeProperty.zendesk_error}"}</simple>
                     </setBody>
                     <log id="_log22" message="received an error from zendesk: ${body}"/>
                     <to id="_to19" uri="log:org.mitre.fcc.broker?showAll=true&amp;multiline=true&amp;level=DEBUG"/>
                 </when>
                 <otherwise id="_otherwise2">
                     <setBody id="_setBody2">
-                        <simple>{result: zendesk record created or updated for user ID ${exchangeProperty.user_id}}</simple>
+                        <simple>{"result": "zendesk record created or updated for user ID ${exchangeProperty.user_id}"}</simple>
                     </setBody>
                     <log id="_log23" message="zendesk successfully created or updated: ${body}"/>
                     <to id="_to20" uri="log:org.mitre.fcc.broker?showAll=true&amp;multiline=true&amp;level=DEBUG"/>
