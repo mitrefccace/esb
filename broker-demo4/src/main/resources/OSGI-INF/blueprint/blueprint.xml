@@ -14,6 +14,8 @@
                 id="bindyDataformat" type="Csv"/>
             <json id="jack" library="Jackson" prettyPrint="true"
                 unmarshalTypeName="org.mitre.fcc.broker.User" useList="true"/>
+            <json id="zendesk" library="Jackson" prettyPrint="true"
+                unmarshalTypeName="org.mitre.fcc.broker.ZendeskUser" useList="true"/>
         </dataFormats>
         <restConfiguration bindingMode="off" component="jetty"
             host="0.0.0.0" port="8080">
@@ -30,6 +32,9 @@
             <post id="post_user_rest_binding" uri="/data/user">
                 <to uri="direct:datacreateupdate"/>
             </post>
+            <post id="post_zendesk_user_rest_binding" uri="/data/zendesk/user">
+                <to uri="direct:zendeskjsondatacreateupdate"/>
+            </post>
         </rest>
         <route id="zendesk_jetty">
             <from id="_from4" uri="jetty:http://0.0.0.0:8585/api?matchOnUriPrefix=true"/>
@@ -40,13 +45,13 @@
             <to id="_to1" uri="jetty:https://vmdigioia.zendesk.com/api?bridgeEndpoint=true&amp;throwExceptionOnFailure=false"/>
             <log id="_log8" message="request to zendesk - after"/>
         </route>
-        <route id="route_zendesk_bridge">
+        <route id="zendesk_bridge">
             <from id="_from5" uri="direct:zendesk_bridge"/>
             <to id="_to2" uri="log:org.mitre.fcc.broker?showAll=true&amp;multiline=true&amp;level=DEBUG"/>
             <toD id="_toD1" uri="https4://vmdigioia.zendesk.com/api/v2/${header.zendesk_request}?bridgeEndpoint=true&amp;throwExceptionOnFailure=false"/>
             <log id="_log10" message="request to zendesk - after"/>
         </route>
-        <route id="route_csv_form_createupdate">
+        <route id="csv_form_createupdate">
             <!-- Split (i.e., iterate) the user object list -->
             <from id="_from3" uri="direct:createupdate"/>
             <log id="_log1" message="transform csv file..."/>
@@ -63,7 +68,7 @@
                 </multicast>
             </split>
         </route>
-        <route id="route_data_createupdate">
+        <route id="data_createupdate">
             <!-- Split (i.e., iterate) the user object list -->
             <from id="_from1" uri="direct:datacreateupdate"/>
             <log id="_log14" message="transform csv or json file..."/>
@@ -75,7 +80,16 @@
                 </when>
                 <when id="_when2">
                     <simple>${in.header.Content-Type} == 'application/json'</simple>
-                    <to id="_to11" uri="direct:jsondatacreateupdate"/>
+                    <convertBodyTo id="_convertBodyTo3" type="java.lang.String"/>
+                    <choice id="_choice5">
+                        <when id="_when6">
+                            <simple>${body} contains 'user_fields'</simple>
+                            <to id="_to11" uri="direct:zendeskjsondatacreateupdate"/>
+                        </when>
+                        <otherwise id="_otherwise5">
+                            <to id="_to11" uri="direct:jsondatacreateupdate"/>
+                        </otherwise>
+                    </choice>
                 </when>
                 <otherwise id="_otherwise1">
                     <to id="_to12" uri="mock:unknownContent"/>
@@ -83,7 +97,7 @@
             </choice>
             <to id="_to18" uri="log:org.mitre.fcc.broker?showAll=true&amp;multiline=true&amp;level=DEBUG"/>
         </route>
-        <route id="route_csv_data_createupdate">
+        <route id="csv_data_createupdate">
             <from id="_from2" uri="direct:csvdatacreateupdate"/>
             <unmarshal id="_unmarshal2" ref="bindyDataformat"/>
             <log id="_log15" message="Got ${body}"/>
@@ -100,7 +114,7 @@
                 </multicast>
             </split>
         </route>
-        <route id="route_json_data_createupdate">
+        <route id="json_data_createupdate">
             <from id="_from8" uri="direct:jsondatacreateupdate"/>
             <unmarshal id="_unmarshal3" ref="jack"/>
             <log id="_log19" message="Got ${body}"/>
@@ -118,15 +132,49 @@
                 <to id="_to17" uri="log:org.mitre.fcc.broker?showAll=true&amp;multiline=true&amp;level=DEBUG"/>
             </split>
         </route>
-        <route id="route_mysql_createorupdate">
+        <route id="zendesk_json_data_createupdate">
+            <from id="_from9" uri="direct:zendeskjsondatacreateupdate"/>
+            <log id="_log27" message="Got ${body}"/>
+            <unmarshal id="_unmarshal4" ref="zendesk"/>
+            <split id="_split4" strategyRef="splitAggregator">
+                <simple>${body}</simple>
+                <log id="_log28" message="Split ${body}"/>
+                <log id="_log29" message="User Name: ${body.name}"/>
+                <setHeader headerName="zendesk_format" id="_setHeader3">
+                    <constant>true</constant>
+                </setHeader>
+                <setProperty id="_setProperty4" propertyName="user_id">
+                    <simple>${body.externalId}</simple>
+                </setProperty>
+                <multicast id="_multicast4" strategyRef="multicastAggregator">
+                    <to id="_to24" uri="direct:mysql"/>
+                    <to id="_to25" uri="direct:zendesk"/>
+                </multicast>
+                <to id="_to26" uri="log:org.mitre.fcc.broker?showAll=true&amp;multiline=true&amp;level=DEBUG"/>
+            </split>
+        </route>
+        <route id="mysql_createorupdate">
             <from id="_from6" uri="direct:mysql"/>
-            <setBody id="_setBody1">
-                <simple trim="false">INSERT INTO users (user_id,user_email,user_name,user_address,user_phone,user_account,user_description) VALUES ("${body.id}","${body.email}","${body.name}","${body.address}","${body.phone}","${body.account}","${body.notes}")
-                                        ON DUPLICATE KEY UPDATE user_email="${body.email}",user_name="${body.name}",user_address="${body.address}",user_phone="${body.phone}",user_account="${body.account}",user_description="${body.notes}";</simple>
-            </setBody>
-            <log id="_log11" message="body before name jdbc: ${body}"/>
+            <choice id="_choice4">
+                <when id="_when5">
+                    <simple>${body} is 'org.mitre.fcc.broker.ZendeskUser'</simple>
+                    <log id="_log30" message="processing zendesk json"/>
+                    <setBody id="_setBody1">
+                        <simple trim="false">INSERT INTO users (user_id,user_email,user_name,user_address,user_phone,user_account,user_description) VALUES ("${body.externalId}","${body.email}","${body.name}","${body.userFields.address}","${body.phone}","${body.userFields.bankAccount}","${body.notes}")
+		                                        ON DUPLICATE KEY UPDATE user_email="${body.email}",user_name="${body.name}",user_address="${body.userFields.address}",user_phone="${body.phone}",user_account="${body.userFields.bankAccount}",user_description="${body.notes}";</simple>
+                    </setBody>
+                </when>
+                <otherwise id="_otherwise4">
+                    <log id="_log31" message="processing flat json"/>
+                    <setBody id="_setBody6">
+                        <simple trim="false">INSERT INTO users (user_id,user_email,user_name,user_address,user_phone,user_account,user_description) VALUES ("${body.id}","${body.email}","${body.name}","${body.address}","${body.phone}","${body.account}","${body.notes}")
+		                                        ON DUPLICATE KEY UPDATE user_email="${body.email}",user_name="${body.name}",user_address="${body.address}",user_phone="${body.phone}",user_account="${body.account}",user_description="${body.notes}";</simple>
+                    </setBody>
+                </otherwise>
+            </choice>
+            <log id="_log11" message="body before user jdbc: ${body}"/>
             <to id="_to5" uri="jdbc:myDataSource?useHeadersAsParameters=false"/>
-            <log id="_log12" message="body after name jdbc: ${body}"/>
+            <log id="_log12" message="body after user jdbc: ${body}"/>
             <to id="_to15" uri="log:org.mitre.fcc.broker?showAll=true&amp;multiline=true&amp;level=DEBUG"/>
             <choice id="_choice3">
                 <when id="_when4">
@@ -148,12 +196,22 @@
                 </otherwise>
             </choice>
         </route>
-        <route id="route_zendesk" streamCache="true">
+        <route id="zendesk" streamCache="true">
             <!--             <convertBodyTo id="_convertBodyTo2" type="String"/> -->
             <from id="_from7" uri="direct:zendesk"/>
-            <log id="_log13" message="body in route_zendesk: ${body}"/>
-            <bean id="_bean2" method="transform" ref="zendeskTransform"/>
-            <log id="_log18" message="body after replace ${body}"/>
+            <log id="_log13" message="body in zendesk: ${body}"/>
+            <choice id="_choice6">
+                <when id="_when7">
+                    <simple>${body} is 'org.mitre.fcc.broker.User'</simple>
+                    <bean id="_bean2" method="transform" ref="zendeskTransform"/>
+                    <log id="_log18" message="body after transform ${body}"/>
+                </when>
+                <when id="_when8">
+                    <simple>${body} is 'org.mitre.fcc.broker.ZendeskUser'</simple>
+                    <marshal id="_marshal1" ref="zendesk"/>
+                    <log message="body after marshal ${body}"/>
+                </when>
+            </choice>
             <to id="_to23" uri="log:org.mitre.fcc.broker?showAll=true&amp;multiline=true&amp;level=DEBUG"/>
             <setHeader headerName="Content-Type" id="_setHeader1">
                 <constant>application/json</constant>
