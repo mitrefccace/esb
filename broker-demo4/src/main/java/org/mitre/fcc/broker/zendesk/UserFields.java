@@ -1,5 +1,5 @@
 
-package org.mitre.fcc.broker;
+package org.mitre.fcc.broker.zendesk;
 
 import java.util.HashMap;
 import java.util.Map;

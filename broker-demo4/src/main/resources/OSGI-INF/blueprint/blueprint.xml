@@ -15,7 +15,7 @@
             <json id="jack" library="Jackson" prettyPrint="true"
                 unmarshalTypeName="org.mitre.fcc.broker.User" useList="true"/>
             <json id="zendesk" library="Jackson" prettyPrint="true"
-                unmarshalTypeName="org.mitre.fcc.broker.ZendeskUser" useList="true"/>
+                unmarshalTypeName="org.mitre.fcc.broker.zendesk.ZendeskUser" useList="true"/>
         </dataFormats>
         <restConfiguration bindingMode="off" component="jetty"
             host="0.0.0.0" port="8080">
@@ -139,12 +139,12 @@
             <split id="_split4" strategyRef="splitAggregator">
                 <simple>${body}</simple>
                 <log id="_log28" message="Split ${body}"/>
-                <log id="_log29" message="User Name: ${body.name}"/>
+                <log id="_log29" message="User Name: ${body.user.name}"/>
                 <setHeader headerName="zendesk_format" id="_setHeader3">
                     <constant>true</constant>
                 </setHeader>
                 <setProperty id="_setProperty4" propertyName="user_id">
-                    <simple>${body.externalId}</simple>
+                    <simple>${body.user.externalId}</simple>
                 </setProperty>
                 <multicast id="_multicast4" strategyRef="multicastAggregator">
                     <to id="_to24" uri="direct:mysql"/>
@@ -157,11 +157,11 @@
             <from id="_from6" uri="direct:mysql"/>
             <choice id="_choice4">
                 <when id="_when5">
-                    <simple>${body} is 'org.mitre.fcc.broker.ZendeskUser'</simple>
+                    <simple>${body} is 'org.mitre.fcc.broker.zendesk.ZendeskUser'</simple>
                     <log id="_log30" message="processing zendesk json"/>
                     <setBody id="_setBody1">
-                        <simple trim="false">INSERT INTO users (user_id,user_email,user_name,user_address,user_phone,user_account,user_description) VALUES ("${body.externalId}","${body.email}","${body.name}","${body.userFields.address}","${body.phone}","${body.userFields.bankAccount}","${body.notes}")
-		                                        ON DUPLICATE KEY UPDATE user_email="${body.email}",user_name="${body.name}",user_address="${body.userFields.address}",user_phone="${body.phone}",user_account="${body.userFields.bankAccount}",user_description="${body.notes}";</simple>
+                        <simple trim="false">INSERT INTO users (user_id,user_email,user_name,user_address,user_phone,user_account,user_description) VALUES ("${body.user.externalId}","${body.user.email}","${body.user.name}","${body.user.userFields.address}","${body.user.phone}","${body.user.userFields.bankAccount}","${body.user.notes}")
+		                                        ON DUPLICATE KEY UPDATE user_email="${body.user.email}",user_name="${body.user.name}",user_address="${body.user.userFields.address}",user_phone="${body.user.phone}",user_account="${body.user.userFields.bankAccount}",user_description="${body.user.notes}";</simple>
                     </setBody>
                 </when>
                 <otherwise id="_otherwise4">
@@ -207,9 +207,10 @@
                     <log id="_log18" message="body after transform ${body}"/>
                 </when>
                 <when id="_when8">
-                    <simple>${body} is 'org.mitre.fcc.broker.ZendeskUser'</simple>
+                    <simple>${body} is 'org.mitre.fcc.broker.zendesk.ZendeskUser'</simple>
                     <marshal id="_marshal1" ref="zendesk"/>
-                    <log message="body after marshal ${body}"/>
+                    <convertBodyTo id="_convertBodyTo4" type="java.lang.String"/>
+                    <log id="_log9" message="body after marshal ${body}"/>
                 </when>
             </choice>
             <to id="_to23" uri="log:org.mitre.fcc.broker?showAll=true&amp;multiline=true&amp;level=DEBUG"/>

@@ -86,9 +86,9 @@
 					<instructions>
 						<Bundle-SymbolicName>${project.artifactId}</Bundle-SymbolicName>
 						<Bundle-Description>${project.description}</Bundle-Description>
-						<Export-Package>org.mitre.fcc.broker</Export-Package>
+						<Export-Package>org.mitre.fcc.broker.*</Export-Package>
 						<Import-Package>*,org.apache.camel.osgi</Import-Package>
-						<Private-Package>org.mitre.fcc.broker</Private-Package>
+						<Private-Package>org.mitre.fcc.broker.*</Private-Package>
 					</instructions>
 				</configuration>
 			</plugin>

@@ -1,5 +1,5 @@
 
-package org.mitre.fcc.broker;
+package org.mitre.fcc.broker.zendesk;
 
 import java.util.HashMap;
 import java.util.List;
@@ -50,7 +50,7 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
     "default_group_id",
     "user_fields"
 })
-public class ZendeskUser {
+public class User {
 
     @JsonProperty("id")
     private Integer id;
