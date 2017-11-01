@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- zendesk example -->
+
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xsi:schemaLocation="
+             http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd">
+
+  <reference id="myDataSource" interface="javax.sql.DataSource" filter="(osgi.jndi.service.name=jdbc/mySqlDataSource)" availability="mandatory" />
+			 
+  <camelContext streamCache="true" xmlns="http://camel.apache.org/schema/blueprint">
+
+	<!-- Cache to memory -->
+	<streamCaching id="cacheConfig" bufferSize="0" />
+	
+	
+	<!-- Pass through everything to my zendesk account and update MySQL when there is a PUT-->
+	<route id="rest-http-zendesk-mysql-demo">
+		<from uri="jetty:http://0.0.0.0:9090/api?matchOnUriPrefix=true" />
+		<log message="from test: route: CamelHttpPath=[${header.CamelHttpPath}], CamelHttpUri=[${header.CamelHttpUri}]" />
+		<convertBodyTo type="java.lang.String"/>
+		<log message="body: ${body}" />
+		<choice>
+			<when>
+				<simple>body.isEmpty()</simple>
+				<log message="request to zendesk - before" />
+				<!-- Add the following parameters if connecting to a proxy in cleartext:  
+				     proxyAuthHost=<replace with proxy ip>&amp;proxyAuthPort=<replace with proxy port>&amp;proxyAuthScheme=http4&amp; -->
+				<to uri="https4://<insert CRM hostname>/api?bridgeEndpoint=true&amp;throwExceptionOnFailure=false"/>
+				<log message="request to zendesk - after" />
+			</when>
+			<when>
+				<jsonpath suppressExceptions="true">user.id</jsonpath>
+				<log message="updating zendesk info - address and bank account" />
+				<log message="body before: ${body}" />
+				<!-- Add the following parameters if connecting to a proxy in cleartext:  
+				     proxyAuthHost=<replace with proxy ip>&amp;proxyAuthPort=<replace with proxy port>&amp;proxyAuthScheme=http4&amp; -->
+				<to uri="https4://<insert CRM hostname>/api?bridgeEndpoint=true&amp;throwExceptionOnFailure=false"/>
+				<to uri="mock:result"/>
+				<setHeader headerName="user_id">
+					<jsonpath suppressExceptions="false">user.id</jsonpath>
+				</setHeader>
+				<setHeader headerName="user_address">
+					<jsonpath suppressExceptions="false">user.user_fields.address</jsonpath>
+				</setHeader>
+				<setHeader headerName="user_account">
+					<jsonpath suppressExceptions="false">user.user_fields.bank_account</jsonpath>
+				</setHeader>
+				<setBody>
+					<simple trim="false">UPDATE users SET user_address='${in.header.user_address}', user_account='${in.header.user_account}' WHERE user_id='${in.header.user_id}';</simple>
+				</setBody>
+				<log message="body before name jdbc: ${body}" />
+				<to uri="jdbc:myDataSource?useHeadersAsParameters=false"/>
+				<log message="body after name jdbc: ${body}" />
+			</when>
+			<otherwise>
+				<log message="request to zendesk - otherwise before" />
+				<!-- Add the following parameters if connecting to a proxy in cleartext:  
+				     proxyAuthHost=<replace with proxy ip>&amp;proxyAuthPort=<replace with proxy port>&amp;proxyAuthScheme=http4&amp; -->
+				<to uri="https4://<insert CRM hostname>/api?bridgeEndpoint=true&amp;throwExceptionOnFailure=false"/>
+				<log message="request to zendesk - otherwise after" />
+			</otherwise>
+		</choice>
+		<log message="to test:" />
+	</route>
+
+  </camelContext>
+
+</blueprint>
