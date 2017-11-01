@@ -24,14 +24,18 @@
 			<when>
 				<simple>body.isEmpty()</simple>
 				<log message="request to zendesk - before" />
-				<to uri="jetty:https://<insert CRM hostname>/api?bridgeEndpoint=true&amp;throwExceptionOnFailure=false"/>
+				<!-- Add the following parameters if connecting to a proxy in cleartext:  
+				     proxyAuthHost=<replace with proxy ip>&amp;proxyAuthPort=<replace with proxy port>&amp;proxyAuthScheme=http4&amp; -->
+				<to uri="https4://<insert CRM hostname>/api?bridgeEndpoint=true&amp;throwExceptionOnFailure=false"/>
 				<log message="request to zendesk - after" />
 			</when>
 			<when>
 				<jsonpath suppressExceptions="true">user.id</jsonpath>
 				<log message="updating zendesk info - address and bank account" />
 				<log message="body before: ${body}" />
-				<to uri="jetty:https://<insert CRM hostname>/api?bridgeEndpoint=true&amp;throwExceptionOnFailure=false"/>
+				<!-- Add the following parameters if connecting to a proxy in cleartext:  
+				     proxyAuthHost=<replace with proxy ip>&amp;proxyAuthPort=<replace with proxy port>&amp;proxyAuthScheme=http4&amp; -->
+				<to uri="https4://<insert CRM hostname>/api?bridgeEndpoint=true&amp;throwExceptionOnFailure=false"/>
 				<to uri="mock:result"/>
 				<setHeader headerName="user_id">
 					<jsonpath suppressExceptions="false">user.id</jsonpath>
@@ -51,21 +55,14 @@
 			</when>
 			<otherwise>
 				<log message="request to zendesk - otherwise before" />
-				<to uri="jetty:https://<insert CRM hostname>/api?bridgeEndpoint=true&amp;throwExceptionOnFailure=false"/>
+				<!-- Add the following parameters if connecting to a proxy in cleartext:  
+				     proxyAuthHost=<replace with proxy ip>&amp;proxyAuthPort=<replace with proxy port>&amp;proxyAuthScheme=http4&amp; -->
+				<to uri="https4://<insert CRM hostname>/api?bridgeEndpoint=true&amp;throwExceptionOnFailure=false"/>
 				<log message="request to zendesk - otherwise after" />
 			</otherwise>
 		</choice>
 		<log message="to test:" />
 	</route>
-
-
-	<route id="rest-http-provider">
-		<from uri="jetty:http://0.0.0.0:9092?matchOnUriPrefix=true" />
-		<log message="from provider: route: CamelHttpPath=[${header.CamelHttpPath}], CamelHttpUri=[${header.CamelHttpUri}]" />
-		<to uri="jetty:http://<insert hostname>:<insert port number>?bridgeEndpoint=true&amp;throwExceptionOnFailure=false"/>
-		<log message="to provider:" />
-	</route>
-
 
   </camelContext>
 
